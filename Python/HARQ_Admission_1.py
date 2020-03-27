@@ -11,9 +11,6 @@ import numpy as np
 import numpy.polynomial.polynomial as poly
 import plotly.graph_objects as go
 
-import plotly
-plotly.offline.init_notebook_mode(connected=True)
-
 
 #### Функция моделирования канала
 def channel_modeling(SNRdB: np.ndarray, n_exp: int, messages: np.ndarray, codewords_bits: np.ndarray, codewords: np.ndarray, g_x: np.ndarray):
