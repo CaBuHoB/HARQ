@@ -12,9 +12,7 @@ from scipy.stats import norm
 import numpy as np
 import numpy.polynomial.polynomial as poly
 
-import plotly
 import plotly.graph_objects as go
-plotly.offline.init_notebook_mode(connected=True)
 
 
 # Функции моделирования канала
@@ -60,17 +58,17 @@ def modeling_step(index, snr, codewords_ham, g, n, hamming_codewords_all, pe):
     nErrBits = nErrBits_H = nErrBits_H_soft = 0
 
     hamming_codewords_all_bpsk = hamming_codewords_all * 2 - 1
-    distance_vectors_func = lambda r: np.apply_along_axis(np.linalg.norm, -1, r - hamming_codewords_all_bpsk, ord=2)
+    distance_vectors_func = lambda r: np.apply_along_axis(np.linalg.norm, -1, r - hamming_codewords_all_bpsk, ord=1)
 
-    iterations = (40 ** np.log10(snr) * 3000).astype('int')
+    iterations = (30 ** np.log10(snr) * 3000).astype('int')
     for i in range(iterations):
         print('\r\t\tКоличество отправленных сообщений : {}/{}'.format(i + 1, iterations), end='')
         message_index = np.random.randint(0, codewords_ham.shape[0])
 
         while True:
-            c = codewords_ham[message_index]                                # Hamming + BPSK
-            c_AWGN = c + (sigma * np.random.randn(n[0], n[1]))              # AWGN
-            c_x_AWGN = c_AWGN > 0                                           # unBPSK
+            c = codewords_ham[message_index]                                            # Hamming + BPSK
+            c_AWGN = c + (sigma * np.random.randn(n[0], n[1]))   # AWGN
+            c_x_AWGN = c_AWGN > 0                                                       # unBPSK
 
             # Поиск и исправление ошибки
             S = np.apply_along_axis(hamming_parity_check, -1, c_x_AWGN)     # Поиск синдромов
@@ -86,20 +84,20 @@ def modeling_step(index, snr, codewords_ham, g, n, hamming_codewords_all, pe):
             c_x_corrected_decode_soft = vectors_with_min_distance_decode.reshape(-1)
 
             v = ((c > 0) ^ c_x_corrected).sum()
-            s = np.mod(poly.polydiv(c_x_corrected_decode, g), 2)[1].max() == 1       # unCRC
+            s = np.mod(poly.polydiv(c_x_corrected_decode, g), 2)[1].max()      # unCRC
 
             v_soft = ((c > 0) ^ vectors_with_min_distance).sum()
-            s_soft = np.mod(poly.polydiv(c_x_corrected_decode_soft, g), 2)[1].max() == 1  # unCRC
+            s_soft = np.mod(poly.polydiv(c_x_corrected_decode_soft, g), 2)[1].max()  # unCRC
 
             nTests += 1
             nErrBits += ((c > 0) ^ c_x_AWGN).sum()
             nErrBits_H += v
             nErrBits_H_soft += v_soft
 
-            if not s_soft and v_soft > 0:
+            if s_soft == 0 and v_soft > 0:
                 nErrDecode_soft += 1
 
-            if not s:
+            if s == 0:
                 if v > 0:
                     nErrDecode += 1
                 nSent += 1
@@ -143,9 +141,9 @@ def channel_modeling(snr_db, codewords_bits, codewords_ham, hamming_codewords, g
         Pe = modeling_step(i, SNR[i], codewords_ham, g, n, hamming_codewords, Pe)
         print('\n\t\tВремя выполнения : {:.1f}с'.format(timeit.default_timer() - start_time))
 
-        for j in range(d, np.prod(n) + 1):
+        for j in range(d, 25):
             Pe['Ped_theor'][i] += \
-                np.sum(w == j) * (Pe['Pe_bit_theor'][i] ** j) * ((1 - Pe['Pe_bit_theor'][i]) ** (np.prod(n) - j))
+                np.sum(w == j) * (Pe['Pe_bit_theor'][i] ** j) * ((1 - Pe['Pe_bit_theor'][i]) ** (24 - j))
 
     return Pe
 
@@ -167,7 +165,7 @@ codewords_for_channel = codewords_hamming * 2 - 1
 all_hamming_codewords = np.apply_along_axis(hamming_encode, -1, messages[:16, :4])
 
 # Инициализация масива уровней сигнал/шум
-SNRdB = np.arange(-10, 11, 2)
+SNRdB = np.arange(-10, 3, 2)
 
 # Моделирование канала
 dict_Pe = channel_modeling(SNRdB, codewords, codewords_for_channel, all_hamming_codewords, g_x)
@@ -177,8 +175,7 @@ fig = go.Figure()
 fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Ped_theor'], line=dict(dash='dot'), name='Ped theor'))
 fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Ped_theor_up'], line=dict(dash='dot'), name='Ped theor up'))
 fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Ped'], mode='markers', marker=dict(size=15), name='Ped'))
-fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Ped_soft'], mode='markers', marker=dict(size=8), name='Ped soft'))
-fig.update_layout(xaxis_title='$E/N_0, dB$', yaxis_type="log")
+fig.update_layout(xaxis_title='$E/N_0, dB$', yaxis=dict(exponentformat='power'))
 fig.show()
 
 # График вероятности ошибки на бит
@@ -187,7 +184,7 @@ fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Pe_bit'], mode='lines+markers', nam
 fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Pe_bit_after_Hamming'], mode='lines+markers', name='Pe bit after Hamming'))
 fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Pe_bit_after_Hamming_soft'], mode='lines+markers', name='Pe bit after Hamming soft'))
 fig.add_trace(go.Scatter(x=SNRdB, y=dict_Pe['Pe_bit_theor'], line=dict(dash='dot', width=3), name='Pe bit theor'))
-fig.update_layout(xaxis_title='$E/N_0, dB$', yaxis_type="log")
+fig.update_layout(xaxis_title='$E/N_0, dB$', yaxis=dict(exponentformat='power'))
 fig.show()
 
 # График пропускной способности канала
